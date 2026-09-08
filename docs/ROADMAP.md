@@ -85,6 +85,7 @@ nœuds), 5 constats :
 5. **Points d'accroche du connecteur codés en dur** : `Sample Index` /
    `Sample Index.001` lisent des indices de sommets fixes (6 et 8) sur la
    géométrie de la cartouche — fragile si la topologie change.
+   *(Résolu en Phase 4 — remplacé par un calcul Bounding Box.)*
 
 ## Phase 0 — Nettoyage (rapide, sans risque) ✅ fait
 
@@ -166,53 +167,123 @@ l'endroit reçu sur l'input `Geometry`.
 nouvelle position (déplace l'objet test loin de l'origine pour bien voir
 la différence avec le comportement actuel).
 
-## Phase 3 — Alignement du texte gauche/droite
+## Phase 3 — Alignement du texte gauche/droite/centre ✅ largement fait
 
-**Cadre** : `String to Curves` et `Fill Curve` sont dans **TEXTE**
-(`Frame.001`). Le `Switch` à ajouter doit rester dans ce même cadre
-(agrandis-le si besoin) puisqu'il se situe juste après ces deux nœuds et
-avant que la géométrie ne sorte vers **Cartouche** (`Frame`).
+**Mise à jour (version 2 du fichier)** : implémenté en mieux que prévu —
+3 branches (`Frame.001` **TEXTE Gauche**, `Frame.003` **TEXTE Droite**,
+`Frame.004` **TEXTE Centre**) plutôt que 2, sélectionnées par un
+**Menu Switch** (socket `Menu` à 3 entrées Gauche/Droite/Centre) plutôt
+qu'un simple bool `Switch` — plus extensible si un 4e alignement arrive un
+jour.
 
-- [ ] Dupliquer `String to Curves` + `Fill Curve` : une branche par
-      alignement (`align_x` = LEFT / RIGHT, `pivot_mode` adapté en
-      conséquence).
-- [ ] Ajouter un `Switch` (type **Geometry**) juste après ces deux
-      branches, **avant** le calcul de bbox/cartouche/pivot (`Frame` /
-      `Frame.007`) — pour que cette logique reste commune aux deux
-      alignements, pas dupliquée.
-- [ ] Ajouter un nouveau socket bool sur l'interface du node group, ex.
-      `Aligner à droite`, branché sur ce `Switch`.
+- [x] Dupliquer `String to Curves` + `Fill Curve`/`Realize Instances` :
+      une branche par alignement.
+- [x] `Menu Switch` juste après ces branches, avant le calcul de
+      bbox/cartouche/pivot.
+- [x] Socket `Menu` exposé sur l'interface du node group.
 
-**Validation** : basculer le socket produit un texte qui grandit dans
-l'autre sens ; la cartouche/bbox s'adapte correctement dans les deux cas.
+**🐛 Bug à vérifier avant tout le reste** : `String to Curves.002`
+(branche **Centre**, dans `Frame.004`) a `align_x = 'RIGHT'` — identique à
+`String to Curves.001` (branche **Droite**, `Frame.003`). Vérifie dans
+Blender si c'est voulu ou un copier-coller de "Droite" jamais corrigé en
+`'CENTER'`.
 
-## Phase 4 — Connecteur en mode "soulignement"
+**Validation** : basculer le `Menu` doit produire un texte qui grandit
+dans le sens attendu pour chacune des 3 options.
 
-Décision : même ligne point-à-point vers le marqueur, mais avec un point
-d'accroche différent (pas un second segment indépendant).
+## Phase 3bis — Faire suivre la cartouche à l'alignement (bloquant actuel)
 
-**Cadre** : `Sample Index` (l'indice 6 à remplacer) est dans **CONNECTOR
-LINE** (`Frame.002`). `Bounding Box.001`, dont tu vas dériver les deux
-points, est dans **trouve centre pour revenir en arrière** (`Frame.006`)
-— un lien devra donc traverser d'un cadre à l'autre, c'est normal.
+**Cadre** : **Cartouche** (`Frame`) — `Bounding Box`, `Separate XYZ` /
+`Separate XYZ.001` (Min/Max), `Math.007/.008/.009`, `Combine XYZ.003`
+(sortie vers la Translation du `Transform Geometry` qui positionne la
+cartouche).
 
-- [ ] Remplacer le point d'accroche actuel (aujourd'hui : `Sample Index`
-      sur l'indice fixe 6) par un calcul dérivé de `Bounding Box.001`
-      (Min/Max) : ex. `(Max.X, Min.Y, Z)` via `Separate XYZ` (déjà présent
-      dans le graphe) + `Combine XYZ`. Corrige au passage la fragilité de
-      l'indice codé en dur.
-- [ ] Calculer le point "soulignement" (milieu du bord bas) de la même
-      façon : `((Min.X + Max.X) / 2, Min.Y, Z)` via `Math (Add)` +
-      `Math (Multiply 0.5)` sur les X du Min/Max, `Combine XYZ` avec le Y
-      du Min.
-- [ ] `Switch` (type **Vector**) entre les deux points, piloté par un
-      nouveau socket bool, ex. `Connecteur en soulignement`.
-- [ ] Brancher la sortie de ce `Switch` là où `Sample Index` alimentait
-      `Vector Math` → `Curve Line.Start` (répéter le même principe pour le
-      second point si besoin, `Sample Index.001` / indice 8).
+**Pourquoi la cartouche ne suit pas** : `Bounding Box` (dans Cartouche)
+lit bien la géométrie *après* le `Menu Switch`, donc la bbox réelle est
+correcte à chaque changement d'alignement — ce n'est pas le problème. Le
+problème est que la **translation** de la cartouche (`Math.007` → `.008`
+→ `.009` → `Combine XYZ.003.X`) est une formule qui *suppose* que le
+texte commence à `x=0` et grandit vers la droite (vrai seulement pour la
+branche Gauche, `pivot_mode='BOTTOM_LEFT'`). Pour Droite/Centre, la bbox
+réelle est décalée côté négatif, mais la formule continue de positionner
+la cartouche comme si elle était côté positif — d'où le décalage. Preuve
+supplémentaire : `Transform Geometry.008` (Droite) et `.009` (Centre)
+reçoivent exactement la même Translation que la branche Gauche
+(`Reroute.037`) — rien ne compense le changement de sens.
 
-**Validation** : basculer le socket change le point d'accroche de la
-ligne sans casser le style "côté" existant quand le socket est désactivé.
+**Solution la plus solide (Min/Max dynamique, pas de formule figée)** :
+calculer le vrai **centre de la bbox** à chaque fois, `centre.x = (Min.x
++ Max.x) / 2`, au lieu d'une formule qui suppose un sens de croissance.
+
+- [ ] Ajoute un `Math (Add)` : branche dessus les mêmes sorties que
+      `Math.002` reçoit déjà (`Separate XYZ.X` / `Separate XYZ.001.X`,
+      Min et Max) — juste une seconde sortie des mêmes nœuds, rien à
+      dupliquer.
+- [ ] Un `Math (Multiply 0.5)` derrière.
+- [ ] Branche ce résultat sur `Combine XYZ.003.X`, à la place de la
+      sortie actuelle de `Math.008`.
+- [ ] Laisse `MargesBox` uniquement dans le calcul de **taille**
+      (`Math`/`Math.001`, déjà correct) — teste d'abord sans lui dans la
+      translation ; si un décalage volontaire est encore nécessaire,
+      ajoute-le après coup comme un offset séparé et explicite, pas mélangé
+      à la formule de centrage.
+
+**Validation** : basculer le `Menu` (Gauche/Droite/Centre) — la cartouche
+doit rester visuellement centrée sur le texte dans les 3 cas, sans
+réajustement manuel.
+
+## Phase 4 — Connecteur en mode "soulignement" ✅ largement fait
+
+**Mise à jour (version 2 du fichier)** : déjà implémenté avec l'approche
+Bounding Box recommandée (pas les indices fixes de l'ancienne version) —
+`Bounding Box.002`/`.003` + `Separate XYZ.002/.003/.004` +
+`Combine XYZ.006/.007/.008` calculent les deux points candidats, un
+`Switch.003` (type Vector, socket `Souligne Vert-Horiz`) choisit entre
+les deux. Tout ça dans **CONNECTOR LINE** (`Frame.002`).
+
+- [x] Point d'accroche dérivé de la Bounding Box plutôt que d'un indice
+      fixe.
+- [x] Point "soulignement" calculé de la même façon.
+- [x] `Switch` (Vector) entre les deux, piloté par `Souligne Vert-Horiz`.
+
+**Validation** : basculer `Souligne Vert-Horiz` change le point d'accroche
+de la ligne sans casser le style "côté" existant.
+
+## Phase 4bis — Arrondir le coin entre la ligne d'origine et le soulignement
+
+**Cadre** : **CONNECTOR LINE** (`Frame.002`) — `Curve Line`, `Curve
+Line.002`, jointes ensuite par `Join Geometry.001`.
+
+**Pourquoi c'est anguleux actuellement** : `Curve Line` et `Curve
+Line.002` sont deux courbes indépendantes, chacune convertie en tube
+séparément (`Curve to Mesh`) puis jointes après coup. Une jonction entre
+deux tubes indépendants ne peut pas être arrondie — chaque segment reste
+géométriquement isolé, `Join Geometry` ne fusionne pas les splines entre
+eux.
+
+**Solution recommandée — tu utilises déjà cette technique pour les coins
+de la cartouche** (`Quadrilateral → Fillet Curve → Fill Curve.001`) :
+
+- [ ] Remplace les deux `Curve Line` par un **seul spline à 3 points**
+      (origine → coude → point de soulignement/côté) construit via
+      `Points` (3 points, même `Curve Group ID`) → `Points to Curves`
+      (relie les points dans l'ordre en un seul poly spline).
+- [ ] Branche ce spline dans un `Fillet Curve` (mode POLY — identique à
+      celui déjà présent pour la cartouche), avec un nouveau socket
+      `Rayon coin connecteur` si tu veux le piloter depuis l'UI.
+- [ ] `Curve to Mesh` avec le même profil circulaire (`Curve Circle`)
+      qu'actuellement, en aval du fillet plutôt que sur chaque segment
+      séparément.
+
+**Options moins bonnes, pour référence** :
+- `Merge by Distance` sur les deux courbes jointes : ne recrée pas un
+  spline continu, `Fillet Curve` n'aurait rien à arrondir — à éviter.
+- Une sphère au coin pour masquer la jonction : dépannage visuel rapide,
+  mais pas un vrai rayon réglable.
+
+**Validation** : le coin entre les deux segments doit apparaître comme un
+arc continu, dont le rayon suit le socket exposé, dans les deux modes
+(côté et soulignement).
 
 ## Phase 5 — Organisation visuelle (lisibilité, pas de logique nouvelle)
 
@@ -255,7 +326,15 @@ Une fois les phases précédentes appliquées et testées dans Blender :
 ## Notes complémentaires
 
 - Toutes les phases sont indépendantes sauf 1↔2 (voir dépendance notée en
-  Phase 1). L'ordre 0 → 1/2 → 3 → 4 → 5 → 6 est recommandé mais 3 et 4
-  peuvent être inversées entre elles sans risque.
+  Phase 1). L'ordre 0 → 1/2 → 3/3bis → 4/4bis → 5 → 6 est recommandé mais
+  le bloc 3/3bis et le bloc 4/4bis peuvent être inversés entre eux sans
+  risque.
+- Renommage à surveiller : dans la v2 du fichier, une nouvelle frame a
+  été créée avec le nom interne `Frame.006` (label **Calcul Marge**) —
+  différent de `Frame.006 nom de la frame` (label **trouve centre pour
+  revenir en arrière**, celle référencée dans ce document). Blender
+  réutilise les noms internes libérés par un renommage manuel — vérifie
+  toujours le **label visible**, pas seulement le nom interne, si tu
+  compares avec une version antérieure du fichier.
 - Aucune de ces corrections ne nécessite de génération procédurale par
   script Python — tout se fait à la main dans l'éditeur Geometry Nodes.
