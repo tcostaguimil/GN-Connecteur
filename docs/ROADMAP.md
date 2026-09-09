@@ -207,32 +207,42 @@ seulement pour la branche Gauche). Remplacée par un vrai centre de bbox
 dynamique, `centre.x = (Min.x + Max.x) / 2` — appliqué et confirmé présent
 dans le fichier v3.
 
-### Partie B — une deuxième translation cachée annulait le fix (🐛 trouvé, à faire)
+### Partie B — une deuxième translation cachée annulait le fix ✅ fait (v4 du fichier)
 
 **Pourquoi c'était toujours cassé après la Partie A** : `Instance on
 Points.002` (cartouche rectangulaire) et `.003` (cartouche ronde) ne
 servent pas qu'à appliquer la rotation "Suivi Caméra" (`Reroute.012` →
-leur input `Rotation`) — ils instancient aussi le bloc `Transform
+leur input `Rotation`) — ils instanciaient aussi le bloc `Transform
 Geometry` (déjà bien centré par la Partie A) sur un **point** venant de
 `Mesh to Points` (mode EDGES, filtré à l'arête d'index 2 via
-`Compare.001`, sur le *même* mesh de Bounding Box que la Partie A). Ce
-point est topologiquement fixe mais **géométriquement mobile** — il suit
-la bbox réelle, donc il bouge selon l'alignement, exactement comme
-l'ancienne formule buguée. Résultat : `Instance on Points` retranslate le
-bloc déjà centré vers ce point mobile — les deux translations
-s'additionnent au lieu que la bonne remplace l'ancienne.
+`Compare.001`), un point topologiquement fixe mais **géométriquement
+mobile** qui suivait la bbox réelle — les deux translations
+s'additionnaient au lieu que la bonne remplace l'ancienne.
 
-- [ ] Ajoute un nœud `Points` (Count=1, Position=`(0,0,0)`) — un point
-      fixe à l'origine locale, indépendant de l'alignement.
-- [ ] Branche sa sortie sur `Instance on Points.002.Points` **et**
-      `Instance on Points.003.Points`, à la place de `Mesh to
-      Points.Points`.
-- [ ] Une fois validé, supprime `Mesh to Points`, `Compare.001` et
-      `Index.002` (devenus inutiles pour cette partie).
-- [ ] Nettoyage bonus (sans lien avec le bug visible) : `Mesh to
-      Points.002` alimente `Join Geometry.003`, dont la sortie n'est
-      branchée nulle part — reste de débogage mort, supprimable comme les
-      orphelins de la Phase 0.
+- [x] Nœud `Points` (Count=1, Position=`(0,0,0)`) ajouté, branché sur
+      `Instance on Points.002.Points` **et** `Instance on
+      Points.003.Points`, à la place de `Mesh to Points.Points`.
+- [ ] Nettoyage restant : `Mesh to Points`, `Compare.001`, `Index.002`
+      (devenus inutiles) et `Mesh to Points.002` (alimente `Join
+      Geometry.003`, dont la sortie n'est branchée nulle part — reste de
+      débogage mort) peuvent être supprimés.
+
+### Partie C — reste de `MargesBox` dans la translation (🐛 trouvé, à faire — c'est l'écart actuel)
+
+**Pourquoi il reste un écart entre le texte et la cartouche** : le nouveau
+calcul de centre (`Math.012` ADD + `Math.013` MULTIPLY 0.5, à partir de
+`Separate XYZ.005`/`.006`) est correct, mais son résultat passe encore par
+`Math.008`, dont la 2e entrée reste `Math.009` (= `-MargesBox / 2`, le
+terme de l'ancienne formule). Donc `Combine XYZ.003.X = centre_bbox_réel −
+MargesBox/2` au lieu de juste `centre_bbox_réel` — cet écart de
+`MargesBox/2` est visible sur les captures. `MargesBox` doit rester
+uniquement dans le calcul de **taille** (`Math`/`Math.001`, déjà correct).
+
+- [ ] Supprime le lien `Math.009.Value → Math.008.inputs[1]`.
+- [ ] Branche directement `Math.013.Value` (via `Reroute.047`/`Reroute.016`)
+      sur `Combine XYZ.003.X`, en court-circuitant `Math.008`.
+- [ ] `Math.007` est déjà mort (plus personne ne lit sa sortie) —
+      supprimable avec `Math.008`/`Math.009` une fois validé.
 
 **Validation** : basculer le `Menu` (Gauche/Droite/Centre) — la cartouche
 doit rester visuellement centrée sur le texte dans les 3 cas, sans
@@ -291,6 +301,54 @@ de la cartouche** (`Quadrilateral → Fillet Curve → Fill Curve.001`) :
 **Validation** : le coin entre les deux segments doit apparaître comme un
 arc continu, dont le rayon suit le socket exposé, dans les deux modes
 (côté et soulignement).
+
+## Phase 4ter — Faire suivre le point d'accroche du connecteur à l'alignement
+
+**Constat** : le même problème que la Phase 3bis va se reproduire sur la
+ligne de connecteur — quand le texte passe de Gauche à Droite, le point
+d'accroche doit changer de côté lui aussi.
+
+**Garantie de robustesse dans le monde global** : ce calcul se fait dans
+**CONNECTOR LINE** (`Frame.002`), donc en espace **local**, avant l'étape
+finale de placement monde (`Frame.007` + Phase 2). Tout ce qui est
+construit en local — texte, cartouche, ligne — subit ensuite **une seule
+transformation rigide** (rotation caméra + position de l'ancrage). Une
+transformation rigide préserve les relations entre les éléments qu'elle
+déplace ensemble : un point correct en local reste correct après
+rotation/translation, quelle que soit la position finale dans le monde.
+C'est exactement pour ça que la séparation LOCAL (Cartouche/TEXTE/
+CONNECTOR LINE) / MONDE (Suivi caméra, Ancrage, Sortie) a été posée dès la
+Phase 1 — **du moment que ce calcul reste dans la partie locale, il n'y a
+rien à craindre du monde global.**
+
+**Piège à éviter — la symétrie ne couvre que 2 cas sur 3** : inverser le
+point par symétrie (multiplier X par -1) fonctionne pour la paire
+Gauche↔Droite (miroirs exacts l'un de l'autre) mais **pas pour Centre**,
+qui n'est le miroir de rien.
+
+**Solution recommandée — une formule qui s'adapte automatiquement,
+sans brancher sur le `Menu`** (même philosophie que le centre de bbox de
+la Phase 3bis, même pattern que le `Switch.003` déjà construit pour le
+soulignement) :
+
+- [ ] `Math (Absolute)` sur `Min.x` et sur `Max.x` (déjà disponibles via
+      `Separate XYZ`/`Separate XYZ.001` ou leurs équivalents `.002`-`.004`
+      dans ce cadre).
+- [ ] `Compare (Less Than)` entre les deux valeurs absolues.
+- [ ] `Switch` (Vector) qui sélectionne le point côté Min si `|Min.x| <
+      |Max.x|`, sinon le point côté Max — le côté le plus proche de
+      l'ancrage est choisi automatiquement, quel que soit l'alignement
+      actif, sans avoir besoin de savoir lequel.
+- [ ] **Décision à prendre explicitement pour Centre** : quand le texte
+      est centré, `|Min.x| ≈ |Max.x|` — le `Compare` devient un tirage
+      quasi arbitraire (sensible aux arrondis). Choisis consciemment le
+      comportement voulu (toujours à gauche ? à droite ? au milieu, ex.
+      `(0, Y, Z)` ?) plutôt que de laisser le hasard flottant décider.
+
+**Validation** : basculer le `Menu` (Gauche/Droite/Centre) — le point
+d'accroche du connecteur doit suivre le bon côté du texte dans les 3 cas,
+et rester correct après avoir changé la position/rotation de l'objet
+porteur dans la scène (test de non-régression de la garantie ci-dessus).
 
 ## Phase 5 — Organisation visuelle (lisibilité, pas de logique nouvelle)
 
