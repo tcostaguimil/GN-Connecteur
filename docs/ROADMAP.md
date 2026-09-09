@@ -361,24 +361,37 @@ nœud constante `Vector` (`(0,0,0)`, alimente `Curve Line.003.Start`).
 **Symptôme** : avec `distance = (1, 2, 0)`, Gauche est correct mais Droite
 place le Start de `Curve Line.003` à `x = -3` au lieu de `0`.
 
-**Deux causes cumulées, retracées précisément** :
-1. Le miroir de `distance.x` pour Droite passe par `Math.018` (MULTIPLY
-   par **2.0**, pas 1.0) puis `Math.017` (MULTIPLY par -1.0) →
-   `-2×distance.x` au lieu du miroir attendu `-1×distance.x`.
-2. `Curve Line.003.Start` est calculé comme `Vector(0,0,0) − distance`
-   (via `Vector Math.003` puis `.011`) — donc ce point bouge avec
-   `distance` alors qu'il représente l'ancrage, qui ne devrait jamais en
-   dépendre. Avec `distance.x=1` : `-1` (ce terme) `+ -2` (le bug ci-dessus,
-   appliqué au bloc entier via `Transform Geometry.011`) `= -3` — exactement
-   la valeur observée.
+**❌ Diagnostic initial écarté** : brancher `Start` directement sur la
+constante `(0,0,0)` (ma première suggestion) casse le mécanisme — testé,
+ne fonctionne pas ("fait un point" au lieu d'une ligne). `Start` **doit**
+dépendre de `distance`, ce n'est pas un bug : c'est un mécanisme
+d'annulation volontaire.
 
-- [ ] Branche `Curve Line.003.Start` directement sur le nœud constante
-      `Vector (0,0,0)`, en court-circuitant `Vector Math.011`/`.003` pour
-      cette entrée — l'ancrage ne doit jamais dépendre de `distance`, seul
-      l'autre bout de la ligne (côté cartouche) doit bouger.
-- [ ] Corrige `Math.018` : `2.0` → `1.0`, pour que le miroir de
-      `distance.x` sur la branche Droite soit un vrai `-1×`, cohérent avec
-      le `+1×` (non modifié) de la branche Gauche.
+**Le vrai mécanisme (compensation par annulation)** : `Start = -distance`,
+puis le bloc entier est décalé de `+distance` plus loin
+(`Transform Geometry.006`/`.011`) — les deux s'annulent :
+`-distance + distance = (0,0,0)`. Ça fonctionne déjà pour **Gauche**
+puisque le décalage du bloc est `+distance` sans miroir.
+
+**Cause réelle du problème sur Droite** : le décalage du bloc entier est
+mirroré en X (`-distance.x`) pour Droite, mais le **pré-décalage du
+`Start`** (`Vector Math.003` = `-distance`, utilisé tel quel) ne l'est
+**pas** — il reste le `-distance` générique, pas mirroré. Pour que
+l'annulation fonctionne aussi côté Droite, le pré-décalage doit devenir
+`(+distance.x, -distance.y, -distance.z)`, pas `-distance` tout court.
+
+- [ ] Ajoute un `Vector Math` (MULTIPLY par `(-1, 1, 1)`) sur la sortie de
+      `Vector Math.003`, **uniquement sur le chemin qui alimente `Curve
+      Line.003`** (Droite) — ça redonne `+distance.x` tout en gardant
+      `-distance.y`/`-distance.z`.
+- [ ] Branche la sortie de ce nouveau nœud sur `Vector Math.011` à la
+      place de la sortie directe de `Vector Math.003`, pour le côté
+      Droite seulement (ne touche pas au chemin de Gauche, qui fonctionne
+      déjà).
+- [ ] Corrige aussi `Math.018` : `2.0` → `1.0` — les deux corrections sont
+      nécessaires **ensemble**, l'une sans l'autre ne suffit pas à annuler
+      complètement (vérifié par calcul : avec seulement l'une des deux,
+      un résidu de `-2×distance.x` ou `-distance.x` reste selon le cas).
 
 **Validation** : quelle que soit la valeur de `distance` et quel que soit
 l'alignement (Gauche/Droite/Centre), le Start de la ligne de connecteur
