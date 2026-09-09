@@ -233,17 +233,31 @@ s'additionnaient au lieu que la bonne remplace l'ancienne.
 **pas** un bug — c'est une marge voulue et assumée. Décision de garder
 `MargesBox` dans la translation en plus de la taille. Ne pas y retoucher.
 
-### Partie D — cause réelle en cours de vérification
+### Partie D — ✅ confirmé mort, supprimable
 
-L'utilisateur a identifié une cause différente : un ancien setup autour de
-`Transform Geometry.004` (`Instance on Points` / `Mesh to Points.001` /
-`Compare.002` / `Index.003`) dont il ne se souvient plus de la raison
-d'être, source d'un couplage texte↔cartouche non désiré. Décrit comme
-supprimé ("le texte suit la cartouche et vice versa" une fois retiré) mais
-**toujours présent et branché dans le fichier v5 fourni** — à vérifier :
-soit cet export précède la suppression, soit elle a été faite dans un
-autre état de la scène. Reprendre le diagnostic sur un export qui reflète
-l'état réellement testé.
+`Instance on Points` / `Mesh to Points.001` / `Compare.002` / `Index.003`
+(autour de `Transform Geometry.004`) sont bien branchés mais ne mènent
+nulle part — culs-de-sac inertes. Confirmé par l'utilisateur, à supprimer
+à l'occasion, sans lien avec le comportement visible.
+
+### Partie E — ✅ résolu (v6) : sous-node-group `CompensationYX`
+
+Solution retenue, différente de `Store Named Attribute` : un vrai
+sous-node-group réutilisable `CompensationYX` (Geometry + Value en entrée,
+calcule `(Value/2, hauteur_bbox/2 + Value/2, 0)` en sortie), instancié deux
+fois :
+- **`Group.003`** : appliqué au texte (sortie de `Group`, le sélecteur
+  d'alignement `Menu-Align`) via `Transform Geometry.010`, **directement
+  sur `Reroute.035`** — le fil partagé que tout le reste (bbox de la
+  Cartouche, etc.) lit ensuite. C'est la raison pour laquelle ça
+  fonctionne : contrairement à la tentative précédente, la compensation
+  est insérée sur le tuyau réellement partagé par tous les consommateurs,
+  pas sur une branche parallèle qui ferait un fork trop tôt.
+- **`Group.004`** : appliqué à la Bounding Box de la Cartouche elle-même,
+  branché sur `Combine XYZ.003.Y` (anciennement figé à `0.0` en dur).
+
+Architecture en deux étages (texte compensé, puis cartouche construite
+sur ce texte déjà compensé) — validée, rien à changer ici.
 
 **Validation** : basculer le `Menu` (Gauche/Droite/Centre) — la cartouche
 doit rester visuellement centrée sur le texte (à la marge `MargesBox`
@@ -337,23 +351,39 @@ d'accroche du connecteur doit suivre le bon côté du texte dans les 3 cas,
 et rester correct après avoir changé la position/rotation de l'objet
 porteur dans la scène (test de non-régression de la garantie ci-dessus).
 
-## Note — attribut `CompY` (compensation de position, en cours)
+## Phase 4quater — `distance` doit changer de signe en X selon l'alignement (🐛 trouvé, à faire)
 
-Approche en cours pour compenser le centrage automatique de la page en X/Y
-(le bord du cadre doit tomber à 0, gauche ou droite) : un
-`Store Named Attribute` (`CompY`, `FLOAT_VECTOR`, domaine POINT) calculé
-depuis une Bounding Box, à relire plus loin dans le graphe via
-`Named Attribute` plutôt que de tirer un fil sur toute la largeur de
-l'éditeur. Technique saine, cohérente avec un graphe aussi étalé —
-équivalent d'une variable nommée plutôt qu'un branchement longue distance.
+**Cadre** : nœuds flottants entre **CONNECTOR LINE** et la zone de sortie
+— `Math.017`/`.018` (miroir de `distance.x` pour Droite, alimentent
+`Transform Geometry.011` via `Group.005`), `Vector Math.003`/`.011` et le
+nœud constante `Vector` (`(0,0,0)`, alimente `Curve Line.003.Start`).
 
-- Le socket est déjà en `FLOAT_VECTOR` : pas besoin d'un `CompX` séparé,
-  les deux composantes (X et Y) peuvent cohabiter dans le même attribut
-  une fois la partie X ajoutée (renommer en `CompXY` si `CompY` prête à
-  confusion).
-- À vérifier une fois câblé bout en bout : qu'aucun `Join Geometry` /
-  `Realize Instances` entre le `Store` et le `Named Attribute` de lecture
-  ne casse le contexte par-point attendu.
+**Symptôme** : avec `distance = (1, 2, 0)`, Gauche est correct mais Droite
+place le Start de `Curve Line.003` à `x = -3` au lieu de `0`.
+
+**Deux causes cumulées, retracées précisément** :
+1. Le miroir de `distance.x` pour Droite passe par `Math.018` (MULTIPLY
+   par **2.0**, pas 1.0) puis `Math.017` (MULTIPLY par -1.0) →
+   `-2×distance.x` au lieu du miroir attendu `-1×distance.x`.
+2. `Curve Line.003.Start` est calculé comme `Vector(0,0,0) − distance`
+   (via `Vector Math.003` puis `.011`) — donc ce point bouge avec
+   `distance` alors qu'il représente l'ancrage, qui ne devrait jamais en
+   dépendre. Avec `distance.x=1` : `-1` (ce terme) `+ -2` (le bug ci-dessus,
+   appliqué au bloc entier via `Transform Geometry.011`) `= -3` — exactement
+   la valeur observée.
+
+- [ ] Branche `Curve Line.003.Start` directement sur le nœud constante
+      `Vector (0,0,0)`, en court-circuitant `Vector Math.011`/`.003` pour
+      cette entrée — l'ancrage ne doit jamais dépendre de `distance`, seul
+      l'autre bout de la ligne (côté cartouche) doit bouger.
+- [ ] Corrige `Math.018` : `2.0` → `1.0`, pour que le miroir de
+      `distance.x` sur la branche Droite soit un vrai `-1×`, cohérent avec
+      le `+1×` (non modifié) de la branche Gauche.
+
+**Validation** : quelle que soit la valeur de `distance` et quel que soit
+l'alignement (Gauche/Droite/Centre), le Start de la ligne de connecteur
+reste à `(0,0,0)` en local — seul l'autre bout (côté cartouche) doit
+suivre `distance`, dans le bon sens selon le côté.
 
 ## Phase 5 — Organisation visuelle (lisibilité, pas de logique nouvelle)
 
