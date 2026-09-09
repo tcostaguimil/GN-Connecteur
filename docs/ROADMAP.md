@@ -191,46 +191,53 @@ Blender si c'est voulu ou un copier-coller de "Droite" jamais corrigé en
 **Validation** : basculer le `Menu` doit produire un texte qui grandit
 dans le sens attendu pour chacune des 3 options.
 
-## Phase 3bis — Faire suivre la cartouche à l'alignement (bloquant actuel)
+## Phase 3bis — Faire suivre la cartouche à l'alignement
 
 **Cadre** : **Cartouche** (`Frame`) — `Bounding Box`, `Separate XYZ` /
 `Separate XYZ.001` (Min/Max), `Math.007/.008/.009`, `Combine XYZ.003`
 (sortie vers la Translation du `Transform Geometry` qui positionne la
-cartouche).
+cartouche), `Mesh to Points`, `Instance on Points.002`/`.003`.
 
-**Pourquoi la cartouche ne suit pas** : `Bounding Box` (dans Cartouche)
-lit bien la géométrie *après* le `Menu Switch`, donc la bbox réelle est
-correcte à chaque changement d'alignement — ce n'est pas le problème. Le
-problème est que la **translation** de la cartouche (`Math.007` → `.008`
-→ `.009` → `Combine XYZ.003.X`) est une formule qui *suppose* que le
-texte commence à `x=0` et grandit vers la droite (vrai seulement pour la
-branche Gauche, `pivot_mode='BOTTOM_LEFT'`). Pour Droite/Centre, la bbox
-réelle est décalée côté négatif, mais la formule continue de positionner
-la cartouche comme si elle était côté positif — d'où le décalage. Preuve
-supplémentaire : `Transform Geometry.008` (Droite) et `.009` (Centre)
-reçoivent exactement la même Translation que la branche Gauche
-(`Reroute.037`) — rien ne compense le changement de sens.
+### Partie A — centre de bbox dynamique ✅ fait (v3 du fichier)
 
-**Solution la plus solide (Min/Max dynamique, pas de formule figée)** :
-calculer le vrai **centre de la bbox** à chaque fois, `centre.x = (Min.x
-+ Max.x) / 2`, au lieu d'une formule qui suppose un sens de croissance.
+**Pourquoi la cartouche ne suivait pas** : la translation de la cartouche
+(`Math.007` → `.008` → `.009` → `Combine XYZ.003.X`) était une formule qui
+*supposait* que le texte commence à `x=0` et grandit vers la droite (vrai
+seulement pour la branche Gauche). Remplacée par un vrai centre de bbox
+dynamique, `centre.x = (Min.x + Max.x) / 2` — appliqué et confirmé présent
+dans le fichier v3.
 
-- [ ] Ajoute un `Math (Add)` : branche dessus les mêmes sorties que
-      `Math.002` reçoit déjà (`Separate XYZ.X` / `Separate XYZ.001.X`,
-      Min et Max) — juste une seconde sortie des mêmes nœuds, rien à
-      dupliquer.
-- [ ] Un `Math (Multiply 0.5)` derrière.
-- [ ] Branche ce résultat sur `Combine XYZ.003.X`, à la place de la
-      sortie actuelle de `Math.008`.
-- [ ] Laisse `MargesBox` uniquement dans le calcul de **taille**
-      (`Math`/`Math.001`, déjà correct) — teste d'abord sans lui dans la
-      translation ; si un décalage volontaire est encore nécessaire,
-      ajoute-le après coup comme un offset séparé et explicite, pas mélangé
-      à la formule de centrage.
+### Partie B — une deuxième translation cachée annulait le fix (🐛 trouvé, à faire)
+
+**Pourquoi c'était toujours cassé après la Partie A** : `Instance on
+Points.002` (cartouche rectangulaire) et `.003` (cartouche ronde) ne
+servent pas qu'à appliquer la rotation "Suivi Caméra" (`Reroute.012` →
+leur input `Rotation`) — ils instancient aussi le bloc `Transform
+Geometry` (déjà bien centré par la Partie A) sur un **point** venant de
+`Mesh to Points` (mode EDGES, filtré à l'arête d'index 2 via
+`Compare.001`, sur le *même* mesh de Bounding Box que la Partie A). Ce
+point est topologiquement fixe mais **géométriquement mobile** — il suit
+la bbox réelle, donc il bouge selon l'alignement, exactement comme
+l'ancienne formule buguée. Résultat : `Instance on Points` retranslate le
+bloc déjà centré vers ce point mobile — les deux translations
+s'additionnent au lieu que la bonne remplace l'ancienne.
+
+- [ ] Ajoute un nœud `Points` (Count=1, Position=`(0,0,0)`) — un point
+      fixe à l'origine locale, indépendant de l'alignement.
+- [ ] Branche sa sortie sur `Instance on Points.002.Points` **et**
+      `Instance on Points.003.Points`, à la place de `Mesh to
+      Points.Points`.
+- [ ] Une fois validé, supprime `Mesh to Points`, `Compare.001` et
+      `Index.002` (devenus inutiles pour cette partie).
+- [ ] Nettoyage bonus (sans lien avec le bug visible) : `Mesh to
+      Points.002` alimente `Join Geometry.003`, dont la sortie n'est
+      branchée nulle part — reste de débogage mort, supprimable comme les
+      orphelins de la Phase 0.
 
 **Validation** : basculer le `Menu` (Gauche/Droite/Centre) — la cartouche
 doit rester visuellement centrée sur le texte dans les 3 cas, sans
-réajustement manuel.
+réajustement manuel, y compris avec "Suivi Camera" activé (la rotation
+doit continuer à fonctionner, seule la translation en trop disparaît).
 
 ## Phase 4 — Connecteur en mode "soulignement" ✅ largement fait
 
