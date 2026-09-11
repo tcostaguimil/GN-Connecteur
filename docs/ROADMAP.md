@@ -325,41 +325,54 @@ inversion de bug — même famille d'erreur que pour `MargesBox` et les
 pré-décalages qui s'annulent : voir la section « Pièges connus » du
 `CLAUDE.md`.)*
 
-### Centre — 🐛 tout disparaît (NaN) + refonte prévue
+### Centre — 🐛 tout disparaît : `Group.005.Centre` non branché
 
-**Symptôme** : en alignement Centre, **tout le connecteur disparaît**, pas
-seulement la ligne.
+**Symptôme** : en alignement Centre, **tout le widget disparaît**, pas
+seulement la ligne du connecteur.
 
-**Cause** : `Index Switch.002` envoie le même `Combine XYZ.002` sur les
-points 1 et 2 → deux points confondus → segment de longueur nulle. Comme
-`Fillet Curve.003` a `Limit Radius = False`, rien ne borne le rayon :
-arrondir un coin sur un segment nul n'a pas de solution → la courbe sort
-en **NaN**.
-
-**Pourquoi tout disparaît et pas juste la ligne** — le NaN se propage :
+**Cause (vérifiée dans le câblage)** : `Group.005` — l'instance de
+`Menu-Align` qui porte **le bloc entier du widget** (elle choisit entre
+`Transform Geometry.006` pour Gauche et `Transform Geometry.011` pour
+Droite, sa sortie partant vers `Reroute.006` et tout l'aval) — a son
+entrée **`Centre` (inputs[3]) vide**.
 
 ```
-Fillet Curve.003 (NaN) → Group.002 → jointure du widget
-  → Realize Instances.002 → Bounding Box.001   (bbox globale = NaN)
-  → « trouve centre pour revenir en arrière »  (centre = NaN)
-  → Frame.007 (decentre / Scale / repositionne)
-  → Translation du widget ENTIER = NaN → plus rien n'est affiché
+Group.005   inputs[0] Menu   ← Group Input.015.Alignement   ✓
+            inputs[1] Gauche ← Transform Geometry.006       ✓
+            inputs[2] Droite ← Transform Geometry.011       ✓
+            inputs[3] Centre ← (rien)                       ✗
 ```
 
-Gauche et Droite sont épargnés parce que leurs trois points sont
-réellement distincts.
+Un socket de `Menu Switch` non branché renvoie une **géométrie vide** :
+en Centre, `Group.005` ne sort rien, donc il n'y a plus rien à afficher
+nulle part. `Group` et `Group.002` ont bien leurs trois entrées — c'est
+pourquoi seul Centre casse, et totalement.
 
-**Fix — qui implémente en même temps la refonte prévue** :
+- [ ] **Débloquer** : brancher quelque chose sur `Group.005.Centre`. Le
+      plus rapide : `Transform Geometry.006` (celui de Gauche), ce qui
+      donne à Centre le décalage `distance` non mirroré.
+- [ ] **Version correcte à décider** : en Centre le texte est centré sur
+      l'ancrage, donc un décalage en X n'a probablement pas de sens — un
+      troisième `Transform Geometry` avec une translation
+      `(0, distance.y, distance.z)` serait plus juste. Choix visuel à
+      trancher.
 
-- [ ] Passer **`Points.004` de Count = 3 à Count = 2**. Seuls les index 0
-      et 1 sont alors évalués : point 0 = `Reroute.011` (ancrage), point 1
-      = `Combine XYZ.002` (côté cartouche). C'est exactement la courbe à
-      2 points voulue pour le mode Centre ; la 3e entrée de
-      `Index Switch.002` devient inutilisée, sans conséquence.
-      Un spline à 2 points n'ayant pas de point intérieur,
-      `Fillet Curve.003` devient un passe-plat inoffensif (supprimable).
-- [ ] Construire la **seconde courbe séparée pour le surlignement** en
-      mode Centre.
+**❌ Diagnostic écarté** : une analyse antérieure attribuait la
+disparition à un NaN produit par `Fillet Curve.003` sur un segment de
+longueur nulle (points 1 et 2 confondus dans `Index Switch.002`). Testé :
+passer `Points.004` à Count = 2 ne change rien. Le point de contrôle
+dupliqué reste inélégant, mais ce n'est **pas** la cause de la
+disparition.
+
+**Refonte Centre prévue par ailleurs** (indépendante du bug ci-dessus) :
+
+- [ ] Courbe à 2 points seulement (du centre à la cartouche) plutôt que 3.
+- [ ] Seconde courbe séparée pour le surlignement.
+
+### Nettoyage
+
+- [ ] `Group.001` (quatrième instance de `Menu-Align`) n'a **aucun lien**,
+      ni entrée ni sortie — orphelin, supprimable.
 
 ### Robustesse — `Limit Radius` (indépendant du bug ci-dessus)
 
