@@ -27,37 +27,37 @@ librement sans aucun cadre autour. **Chaque étape ci-dessous précise
 maintenant une ligne "Cadre :"** — soit le label visible d'un cadre existant,
 soit "aucun (nœuds flottants)" avec un repère relatif à un cadre visible.
 
-### Cadres existants (nom interne → label visible → contenu)
+**Pour retrouver un nœud par son nom** : `Ctrl+F` (`Select ▸ Find Node`)
+dans l'éditeur — sélectionne le nœud et recentre la vue dessus. C'est le
+moyen fiable de suivre les instructions ci-dessous, qui désignent les
+nœuds par leur nom interne.
 
-| Nom interne | Label visible dans l'éditeur | Contenu |
-|---|---|---|
-| `Frame` | **Cartouche** | Fond de la bulle (Grid), bbox du texte, calcul de taille, cartouche ronde/switch |
-| `Frame.001` | **TEXTE** | `String to Curves`, `Fill Curve`, réalisation des instances de caractères |
-| `Frame.002` | **CONNECTOR LINE** | Les deux segments de ligne (`Curve Line`, `Curve Line.002`), leur profil circulaire |
-| `Frame.006` | **trouve centre pour revenir en arrière** | Bbox globale du widget + calcul du centre (`Vector Math.004/.007/.008/.009`) |
-| `Frame.007` | **1. decentre par la moitier 2.Scale 3.repositionne + la scale** | Les 3 `Transform Geometry` du pivot/scale final, tout à l'extrême droite du graphe, juste avant `Group Output` |
+### Cadres existants — **resynchronisé sur le fichier v7**
 
-**Deux cadres sont vides — ignore-les** : `Frame.004` (pas de label,
-aucun nœud) et `Frame.005` (label "deplacement du tout au pivot", aucun
-nœud non plus). Ce sont des cadres fantômes, comme les nœuds orphelins de
-la Phase 0 — tu peux les supprimer sans risque à l'occasion.
+| Nom interne | Label visible | Nb nœuds | Contenu |
+|---|---|---|---|
+| `Frame` | **Cartouche** | 45 | Fond de la bulle (Grid), bbox du texte, taille, cartouche ronde/switch |
+| `Frame.001` | **TEXTE Gauche** | 3 | `String to Curves` + Transform + Realize de la branche Gauche |
+| `Frame.003` | **TEXTE Droite** | 3 | Idem branche Droite |
+| `Frame.004` | **TEXTE Centre** | 3 | Idem branche Centre |
+| `Frame.002` | **CONNECTOR LINE** | 56 | Les 3 chaînes du connecteur (Points / Points to Curves / Fillet), points d'accroche bbox, switch soulignement |
+| `Frame.005` | **MARGES** | 1 | — |
+| `Frame.006` | **Calcul Marge** | 4 | Calcul de la marge |
+| `Frame.006 nom de la frame` | **trouve centre pour revenir en arrière** | 5 | Bbox globale du widget + calcul du centre |
+| `Frame.007` | **1. decentre par la moitier 2.Scale 3.repositionne + la scale** | 3 | Les 3 `Transform Geometry` du pivot/scale final, juste avant `Group Output` |
+| `Frame.008` | **Pivot compensé par l'échelle - Selectionne le Vectex du Mesh** | 3 | Ancrage (`Sample Index.002`, `Position.002`) |
+| `Frame.009` | **Distance Origine** | 13 | Pré-décalage et miroir de `distance` (voir Phase 4quater) |
+| `Suivi caméra` | *(le nom sert de label)* | 7 | `Object Info`, `Active Camera`, `Align Rotation to Vector`, `Switch` |
 
-### Nœuds flottants (aucun cadre) — les 3 zones à connaître
+⚠️ **Attention aux deux `Frame.006`** : `Frame.006` (label *Calcul Marge*)
+et `Frame.006 nom de la frame` (label *trouve centre pour revenir en
+arrière*) sont deux cadres différents. Toujours se fier au **label
+visible**, jamais au nom interne.
 
-- **Zone "Suivi caméra"** (Phase 1) : `Object Info`, `Active Camera`,
-  `Align Rotation to Vector`, `Switch`, `Compare`, `Group Input.003`.
-  Repère : juste en dessous et à gauche du cadre **Cartouche**.
-- **Zone "Ancrage"** (Phase 2 — celle qui bloque) : `Sample Index.002`,
-  `Position.002`. Repère : **nettement en dessous du cadre CONNECTOR
-  LINE**, isolés, sans cadre autour — c'est le duo de nœuds tout seul
-  dans le vide sous cette zone. (`Points`, juste à côté, est l'orphelin
-  déjà supprimé en Phase 0.)
-- **Zone "Sortie finale"** : `Realize Instances.002`, `Transform
-  Geometry.006`, `Group Output.001`. Repère : dans l'espace entre le
-  cadre **trouve centre pour revenir en arrière** et le cadre **1.
-  decentre...** — `Group Output.001` est le nœud le plus à droite de
-  tout le graphe, impossible à rater une fois dézoomé en entier (touche
-  `Home` dans l'éditeur pour tout voir d'un coup).
+L'ancienne note « `Frame.004` et `Frame.005` sont vides » est **obsolète**
+— ils portent maintenant du contenu. De même, les zones de nœuds
+flottants décrites dans les versions précédentes ont été encadrées :
+l'ancrage est dans `Frame.008`, le suivi caméra dans `Suivi caméra`.
 
 ## Diagnostic (rappel — pourquoi ces changements)
 
@@ -222,10 +222,9 @@ s'additionnaient au lieu que la bonne remplace l'ancienne.
 - [x] Nœud `Points` (Count=1, Position=`(0,0,0)`) ajouté, branché sur
       `Instance on Points.002.Points` **et** `Instance on
       Points.003.Points`, à la place de `Mesh to Points.Points`.
-- [ ] Nettoyage restant : `Mesh to Points`, `Compare.001`, `Index.002`
-      (devenus inutiles) et `Mesh to Points.002` (alimente `Join
-      Geometry.003`, dont la sortie n'est branchée nulle part — reste de
-      débogage mort) peuvent être supprimés.
+- [x] Nettoyage effectué : `Mesh to Points`, `Mesh to Points.002` et
+      `Join Geometry.003` ont bien disparu du graphe — vérifié, ils
+      n'existent plus dans le fichier v7.
 
 ### Partie C — ❌ diagnostic écarté par l'utilisateur (décision produit)
 
@@ -233,12 +232,11 @@ s'additionnaient au lieu que la bonne remplace l'ancienne.
 **pas** un bug — c'est une marge voulue et assumée. Décision de garder
 `MargesBox` dans la translation en plus de la taille. Ne pas y retoucher.
 
-### Partie D — ✅ confirmé mort, supprimable
+### Partie D — ✅ supprimés (vérifié v7)
 
 `Instance on Points` / `Mesh to Points.001` / `Compare.002` / `Index.003`
-(autour de `Transform Geometry.004`) sont bien branchés mais ne mènent
-nulle part — culs-de-sac inertes. Confirmé par l'utilisateur, à supprimer
-à l'occasion, sans lien avec le comportement visible.
+(autour de `Transform Geometry.004`) étaient branchés mais ne menaient
+nulle part — culs-de-sac inertes. Ils n'existent plus dans le fichier v7.
 
 ### Partie E — ✅ résolu (v6) : sous-node-group `CompensationYX`
 
@@ -303,33 +301,46 @@ courbe) → `Fillet Curve` → sélection par `Group.002` (Menu-Align).
 points, seul le point **d'index 1** est arrondi — il doit donc toujours
 être le **coude**.
 
-### 🐛 Deux bugs restants sur l'ordre des points
+### L'ordre des points = le choix du coin d'accroche (mécanisme voulu)
 
 Contenu réel des `Index Switch` :
 
 | Chaîne | point 0 | point 1 (celui qui est arrondi) | point 2 |
 |---|---|---|---|
-| Gauche | `Reroute.011` (ancrage) | `Vector Math.001` (**coude**) ✅ | `Switch.003` (accroche) |
-| Droite | `Reroute.011` (ancrage) | `Switch.003` (**accroche**) ❌ | `Vector Math.001` (coude) |
-| Centre | `Reroute.011` (ancrage) | `Combine XYZ.002` ❌ | `Combine XYZ.002` ❌ (le même) |
+| Gauche | `Reroute.011` (ancrage) | `Vector Math.001` (coude) | `Switch.003` (accroche) |
+| Droite | `Reroute.011` (ancrage) | `Switch.003` | `Vector Math.001` |
+| Centre | `Reroute.011` (ancrage) | `Combine XYZ.002` | `Combine XYZ.002` |
 
-- [ ] **Droite** : intervertir les entrées 2 et 3 de `Index Switch.001`,
-      pour que le coude (`Vector Math.001`) soit au milieu comme dans la
-      chaîne Gauche. Actuellement le fillet arrondit le point d'accroche.
-- [ ] **Centre** : les points 1 et 2 reçoivent le même `Combine XYZ.002`
-      — deux points confondus, la courbe dégénère (segment de longueur
-      nulle, rien à arrondir). Donner un coude distinct du point
-      d'accroche. **Décision produit à prendre** : quel tracé veut-on
-      quand le texte est centré ? (coude sous le centre du texte ?
-      accroche au milieu du bord bas ?) — c'est le cas ambigu déjà
-      identifié en Phase 4ter, il n'a toujours pas été tranché.
+**L'inversion des points 1 et 2 entre Gauche et Droite n'est pas une
+erreur — c'est le mécanisme qui fait changer le connecteur de coin de la
+cartouche.** Logique de conception : la cartouche a 4 côtés (haut, bas,
+gauche, droite). Si le texte est ferré à gauche, il se développe vers la
+droite, donc le coude doit se trouver du côté **gauche** ; si le texte est
+ferré à droite, il part vers la gauche, donc le coude passe du côté
+**droit**. Inverser les deux points est précisément ce qui produit ce
+basculement.
 
-⚠️ **Motif récurrent** : c'est la troisième fois que la branche Centre
-présente un copier-coller non différencié (après `align_x='RIGHT'`
-identique à Droite, puis `Curve Line.001` réutilisée pour les deux).
-Réflexe à prendre : après avoir dupliqué une branche pour Centre,
-vérifier systématiquement que chacune de ses entrées a bien été
-repointée.
+*(Cette entrée corrige une analyse antérieure qui qualifiait à tort cette
+inversion de bug — même famille d'erreur que pour `MargesBox` et les
+pré-décalages qui s'annulent : voir la section « Pièges connus » du
+`CLAUDE.md`.)*
+
+### Centre — refonte prévue (décision utilisateur)
+
+Le montage actuel (même `Combine XYZ.002` sur les points 1 et 2, donc deux
+points confondus) est reconnu comme peu élégant et **sera remplacé**, pas
+rafistolé :
+
+- [ ] Construire une courbe à **2 points seulement** (du centre jusqu'à la
+      cartouche) pour le mode Centre.
+- [ ] Ajouter une **seconde courbe séparée** pour le surlignement.
+
+Un spline à 2 points n'a pas de point intérieur, donc pas de fillet à
+prévoir sur cette branche — la question du coude ne se pose plus pour
+Centre.
+
+- [ ] Optionnel : exposer un socket `Rayon coin connecteur` pour piloter
+      le rayon des `Fillet Curve` de Gauche et Droite depuis l'UI.
 
 - [ ] Optionnel : exposer un socket `Rayon coin connecteur` pour piloter
       le rayon des trois `Fillet Curve` depuis l'UI du modifier.
@@ -378,52 +389,62 @@ d'accroche du connecteur doit suivre le bon côté du texte dans les 3 cas,
 et rester correct après avoir changé la position/rotation de l'objet
 porteur dans la scène (test de non-régression de la garantie ci-dessus).
 
-## Phase 4quater — `distance` doit changer de signe en X selon l'alignement (🐛 trouvé, à faire)
+## Phase 4quater — l'ancrage ne s'annule pas côté Droite (🐛 à faire) — *resynchronisé v7*
 
-**Cadre** : nœuds flottants entre **CONNECTOR LINE** et la zone de sortie
-— `Math.017`/`.018` (miroir de `distance.x` pour Droite, alimentent
-`Transform Geometry.011` via `Group.005`), `Vector Math.003`/`.011` et le
-nœud constante `Vector` (`(0,0,0)`, alimente `Curve Line.003.Start`).
+**Cadre** : **Distance Origine** (`Frame.009`), plus `Reroute.011` dans
+**CONNECTOR LINE** (`Frame.002`).
 
-**Symptôme** : avec `distance = (1, 2, 0)`, Gauche est correct mais Droite
-place le Start de `Curve Line.003` à `x = -3` au lieu de `0`.
+**Symptôme** : l'ancrage (point 0 des trois chaînes) part à `x = -4` au
+lieu de rester à `0` quand l'alignement est à Droite. Gauche est correct.
 
-**❌ Diagnostic initial écarté** : brancher `Start` directement sur la
-constante `(0,0,0)` (ma première suggestion) casse le mécanisme — testé,
-ne fonctionne pas ("fait un point" au lieu d'une ligne). `Start` **doit**
-dépendre de `distance`, ce n'est pas un bug : c'est un mécanisme
-d'annulation volontaire.
+**Le mécanisme (compensation par annulation — volontaire)** : l'ancrage
+est délibérément pré-décalé de `-distance`, pour s'annuler avec le
+décalage `+distance` appliqué plus loin au bloc entier. Ne **pas** essayer
+de figer l'ancrage à `(0,0,0)` : testé, ça réduit la ligne à un point.
 
-**Le vrai mécanisme (compensation par annulation)** : `Start = -distance`,
-puis le bloc entier est décalé de `+distance` plus loin
-(`Transform Geometry.006`/`.011`) — les deux s'annulent :
-`-distance + distance = (0,0,0)`. Ça fonctionne déjà pour **Gauche**
-puisque le décalage du bloc est `+distance` sans miroir.
+Câblage réel en v7 :
 
-**Cause réelle du problème sur Droite** : le décalage du bloc entier est
-mirroré en X (`-distance.x`) pour Droite, mais le **pré-décalage du
-`Start`** (`Vector Math.003` = `-distance`, utilisé tel quel) ne l'est
-**pas** — il reste le `-distance` générique, pas mirroré. Pour que
-l'annulation fonctionne aussi côté Droite, le pré-décalage doit devenir
-`(+distance.x, -distance.y, -distance.z)`, pas `-distance` tout court.
+| Élément | Valeur |
+|---|---|
+| Pré-décalage (les 3 chaînes) | `Reroute.011` ← `Vector Math.012` = `distance × (-1,-1,-1)` = **`-distance`** |
+| Décalage du bloc, Gauche | `Transform Geometry.006.Translation` = `distance` (tel quel) |
+| Décalage du bloc, Droite | `Transform Geometry.011.Translation` ← `Vector Math.011` ← `Combine XYZ.010` = **`(-distance.x, distance.y, distance.z)`** |
 
-- [ ] Ajoute un `Vector Math` (MULTIPLY par `(-1, 1, 1)`) sur la sortie de
-      `Vector Math.003`, **uniquement sur le chemin qui alimente `Curve
-      Line.003`** (Droite) — ça redonne `+distance.x` tout en gardant
-      `-distance.y`/`-distance.z`.
-- [ ] Branche la sortie de ce nouveau nœud sur `Vector Math.011` à la
-      place de la sortie directe de `Vector Math.003`, pour le côté
-      Droite seulement (ne touche pas au chemin de Gauche, qui fonctionne
-      déjà).
-- [ ] Corrige aussi `Math.018` : `2.0` → `1.0` — les deux corrections sont
-      nécessaires **ensemble**, l'une sans l'autre ne suffit pas à annuler
-      complètement (vérifié par calcul : avec seulement l'une des deux,
-      un résidu de `-2×distance.x` ou `-distance.x` reste selon le cas).
+Addition des deux :
+- Gauche : `(-dx,-dy,-dz) + (dx,dy,dz)` = `(0,0,0)` ✅
+- Droite : `(-dx,-dy,-dz) + (-dx,dy,dz)` = **`(-2·dx, 0, 0)`** ❌ → avec
+  `distance.x = 2`, ça donne bien le `-4` observé.
 
-**Validation** : quelle que soit la valeur de `distance` et quel que soit
-l'alignement (Gauche/Droite/Centre), le Start de la ligne de connecteur
-reste à `(0,0,0)` en local — seul l'autre bout (côté cartouche) doit
-suivre `distance`, dans le bon sens selon le côté.
+**Cause** : le bloc est mirroré en X côté Droite, mais le pré-décalage de
+l'ancrage ne l'est pas — les deux poussent dans le même sens au lieu de
+s'opposer. Il faut que le pré-décalage Droite devienne
+`(+distance.x, -distance.y, -distance.z)`.
+
+**Le nœud nécessaire existe déjà** : `Vector Math.003` (dans `Frame.009`)
+est réglé sur MULTIPLY par `(-1, 1, 1)` — le bon multiplicateur — mais
+n'est branché à rien, ses entrées sont sur leurs valeurs par défaut.
+
+- [ ] Brancher `Vector Math.012` (= `-distance`) → `Vector Math.003`
+      (×`(-1,1,1)`) → **`Index Switch.001`, entrée du point 0** (chaîne
+      Droite uniquement).
+- [ ] ⚠️ Ne **pas** insérer ce miroir sur `Reroute.011` lui-même : ce
+      reroute alimente les trois chaînes (Gauche, Droite et Centre) — le
+      mirorer là casserait Gauche, qui fonctionne. Il faut une dérivation
+      dédiée à Droite.
+
+Vérification : `(-dx,-dy,-dz) × (-1,1,1)` = `(+dx,-dy,-dz)`, puis
+`+ (-dx,dy,dz)` = `(0,0,0)` ✅
+
+**Obsolète depuis v7** : le facteur `×2.0` de `Math.018` n'est plus en
+cause — `Math.017` et `Math.018` lisent maintenant `distance.x` en
+parallèle au lieu d'être chaînés, donc `Combine XYZ.010.X` reçoit un
+`-1×distance.x` propre. `Math.018` est devenu orphelin (sa sortie ne va
+nulle part) et peut être supprimé. `Vector Math.011` (ADD avec `(0,0,0)`)
+est un simple passe-plat, supprimable aussi si tu veux alléger.
+
+**Validation** : quel que soit `distance` et quel que soit l'alignement,
+l'ancrage (point 0) reste à `(0,0,0)` en local — seul l'autre bout de la
+ligne suit `distance`, dans le bon sens selon le côté.
 
 ## Phase 5 — Organisation visuelle (lisibilité, pas de logique nouvelle)
 
