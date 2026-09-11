@@ -281,31 +281,58 @@ les deux. Tout ça dans **CONNECTOR LINE** (`Frame.002`).
 **Validation** : basculer `Souligne Vert-Horiz` change le point d'accroche
 de la ligne sans casser le style "côté" existant.
 
-## Phase 4bis — Arrondir le coin entre la ligne d'origine et le soulignement
+## Phase 4bis — Arrondir le coin du connecteur ✅ structure en place (v7)
 
-**Cadre** : **CONNECTOR LINE** (`Frame.002`) — `Curve Line`, `Curve
-Line.002`, jointes ensuite par `Join Geometry.001`.
+**Cadre** : **CONNECTOR LINE** (`Frame.002`).
 
-**Pourquoi c'est anguleux actuellement** : `Curve Line` et `Curve
-Line.002` sont deux courbes indépendantes, chacune convertie en tube
-séparément (`Curve to Mesh`) puis jointes après coup. Une jonction entre
-deux tubes indépendants ne peut pas être arrondie — chaque segment reste
-géométriquement isolé, `Join Geometry` ne fusionne pas les splines entre
-eux.
+Les `Curve Line` ont été remplacées par trois chaînes complètes, une par
+alignement, toutes construites sur le bon pattern :
 
-**Solution recommandée — tu utilises déjà cette technique pour les coins
-de la cartouche** (`Quadrilateral → Fillet Curve → Fill Curve.001`) :
+`Points` (Count = 3, Position pilotée par un `Index Switch` alimenté par
+`Index`) → `Points to Curves` (Curve Group ID laissé à 0 = une seule
+courbe) → `Fillet Curve` → sélection par `Group.002` (Menu-Align).
 
-- [ ] Remplace les deux `Curve Line` par un **seul spline à 3 points**
-      (origine → coude → point de soulignement/côté) construit via
-      `Points` (3 points, même `Curve Group ID`) → `Points to Curves`
-      (relie les points dans l'ordre en un seul poly spline).
-- [ ] Branche ce spline dans un `Fillet Curve` (mode POLY — identique à
-      celui déjà présent pour la cartouche), avec un nouveau socket
-      `Rayon coin connecteur` si tu veux le piloter depuis l'UI.
-- [ ] `Curve to Mesh` avec le même profil circulaire (`Curve Circle`)
-      qu'actuellement, en aval du fillet plutôt que sur chaque segment
-      séparément.
+| Chaîne | Index Switch | Points | Points to Curves | Fillet Curve |
+|---|---|---|---|---|
+| Gauche | `Index Switch` | `Points.002` | `Points to Curves` | `Fillet Curve.001` |
+| Droite | `Index Switch.001` | `Points.003` | `Points to Curves.001` | `Fillet Curve.002` |
+| Centre | `Index Switch.002` | `Points.004` | `Points to Curves.002` | `Fillet Curve.003` |
+
+**Règle à garder en tête** : `Fillet Curve` n'arrondit que les points
+*intérieurs* d'une spline, jamais les extrémités. Sur un spline à 3
+points, seul le point **d'index 1** est arrondi — il doit donc toujours
+être le **coude**.
+
+### 🐛 Deux bugs restants sur l'ordre des points
+
+Contenu réel des `Index Switch` :
+
+| Chaîne | point 0 | point 1 (celui qui est arrondi) | point 2 |
+|---|---|---|---|
+| Gauche | `Reroute.011` (ancrage) | `Vector Math.001` (**coude**) ✅ | `Switch.003` (accroche) |
+| Droite | `Reroute.011` (ancrage) | `Switch.003` (**accroche**) ❌ | `Vector Math.001` (coude) |
+| Centre | `Reroute.011` (ancrage) | `Combine XYZ.002` ❌ | `Combine XYZ.002` ❌ (le même) |
+
+- [ ] **Droite** : intervertir les entrées 2 et 3 de `Index Switch.001`,
+      pour que le coude (`Vector Math.001`) soit au milieu comme dans la
+      chaîne Gauche. Actuellement le fillet arrondit le point d'accroche.
+- [ ] **Centre** : les points 1 et 2 reçoivent le même `Combine XYZ.002`
+      — deux points confondus, la courbe dégénère (segment de longueur
+      nulle, rien à arrondir). Donner un coude distinct du point
+      d'accroche. **Décision produit à prendre** : quel tracé veut-on
+      quand le texte est centré ? (coude sous le centre du texte ?
+      accroche au milieu du bord bas ?) — c'est le cas ambigu déjà
+      identifié en Phase 4ter, il n'a toujours pas été tranché.
+
+⚠️ **Motif récurrent** : c'est la troisième fois que la branche Centre
+présente un copier-coller non différencié (après `align_x='RIGHT'`
+identique à Droite, puis `Curve Line.001` réutilisée pour les deux).
+Réflexe à prendre : après avoir dupliqué une branche pour Centre,
+vérifier systématiquement que chacune de ses entrées a bien été
+repointée.
+
+- [ ] Optionnel : exposer un socket `Rayon coin connecteur` pour piloter
+      le rayon des trois `Fillet Curve` depuis l'UI du modifier.
 
 **Options moins bonnes, pour référence** :
 - `Merge by Distance` sur les deux courbes jointes : ne recrée pas un

@@ -102,6 +102,19 @@ corrections proposées à tort par le passé, testées et rejetées :
   couper une dépendance qui "n'a pas l'air d'avoir de sens", vérifier
   qu'elle ne fait pas partie d'une paire qui s'annule.**
 
+## Retrouver un nœud dans l'éditeur
+
+Le graphe est très étalé et les nœuds portent des noms auto-générés
+(`Math.017`, `Reroute.011`…) difficiles à localiser à l'œil.
+
+- **`Select ▸ Find Node` (Ctrl+F)** dans l'éditeur de nœuds : ouvre une
+  recherche, sélectionne le nœud trouvé et **recentre la vue dessus**.
+  Cherche par nom, label de socket, avertissement, ou certaines valeurs
+  de sockets. C'est le moyen fiable de suivre les instructions de la
+  roadmap, qui désignent les nœuds par leur nom interne.
+- Dans l'autre sens (identifier un nœud visible) : le sélectionner puis
+  sidebar `N` → onglet **Item**, qui affiche son nom.
+
 ## Méthode de travail — vérifications obligatoires
 
 Le graphe a grandi de façon organique et contient beaucoup de pièges de
