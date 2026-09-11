@@ -488,6 +488,107 @@ est un simple passe-plat, supprimable aussi si tu veux alléger.
 l'ancrage (point 0) reste à `(0,0,0)` en local — seul l'autre bout de la
 ligne suit `distance`, dans le bon sens selon le côté.
 
+## Phase 4quinquies — Refonte de l'étage MONDE (analyse structurelle, v7)
+
+**Contrainte posée** : *le point 0 du connecteur (l'ancrage) doit rester à
+`(0,0,0)`.* C'est cette contrainte qui dicte toute la structure ci-dessous.
+
+### Cartographie réelle de la chaîne (v7)
+
+```
+── LOCAL ─────────────────────────────────────────────────────────
+TEXTE      3 branches (Frame.001/.003/.004) → Group [Menu-Align]
+           → Transform Geometry.010  ← Group.003 [CompensationYX]
+           → Reroute.035 ─────────────────────────────┐
+CARTOUCHE  Bounding Box (lit Reroute.035) → taille/pos │
+           → Grid / Quadrilateral
+           → Transform Geometry / .007
+           → Instance on Points.002/.003  ← ROTATION CAMÉRA (ici seulement)
+           → Switch.001 → Set Material.003 ────────────┤
+CONNECTEUR 3 chaînes Points→Points to Curves→Fillet    │
+           → Group.002 [Menu-Align] → Trim Curve       │
+           → Curve to Mesh ────────────────────────────┤
+                                                       ▼
+── MONDE ──────────────────────────────────────  Join Geometry
+           → Group.005 [Menu-Align] (décalage `distance` par alignement)
+           → Realize Instances.002
+           → Transform Geometry.002   Translation = −centre_bbox  [décentre]
+           → Transform Geometry.005   Scale = Scale global         [scale]
+           → Transform Geometry.003   Translation = +centre×scale  [repositionne]
+           → Group Output.001
+```
+
+### 🐛 Bug A — décalage X+0.5 en alignement Centre
+
+`CompensationYX` sort `(Value/2, hauteur/2 + Value/2, 0)` avec
+`Value = MargesBox`. Avec `MargesBox = 1.0`, la composante X vaut `+0.5`
+— exactement le décalage observé. Ce terme est appliqué au texte
+**inconditionnellement** (`Group.003` → `Transform Geometry.010`), quel que
+soit l'alignement. Pertinent pour Gauche/Droite, faux pour Centre où le
+texte doit rester centré.
+
+- [ ] Ajouter un socket `Facteur X` au sous-groupe `CompensationYX` et
+      multiplier la sortie de `Math.019` par ce facteur avant
+      `Combine XYZ.010.X` (ne pas toucher au Y, nécessaire dans les 3 cas).
+- [ ] L'alimenter avec un `Menu Switch` (type **Float**) piloté par
+      `Alignement` : Gauche = `1`, Droite = `1`, Centre = **`0`**.
+      *(1/1/0 et non 1/-1/0 : Gauche et Droite fonctionnent
+      actuellement, on n'y touche pas.)*
+
+### 🐛 Bug B — Suivi Caméra : la rotation n'est appliquée qu'à la cartouche
+
+**Vérifié** : les deux seuls nœuds recevant la rotation sont
+`Instance on Points.002` et `.003`, tous deux dans le cadre **Cartouche**,
+et ils n'instancient que le fond de la bulle (`Transform Geometry` = Grid,
+`Transform Geometry.007` = cartouche arrondie). Le **texte** et la **ligne
+de connecteur** ne sont jamais tournés → en activant le suivi caméra, le
+fond pivote seul et se désolidarise du reste.
+
+Ces deux `Instance on Points` instancient sur un nœud `Points` fixe à
+`(0,0,0)`, Count = 1 : ils n'apportent **aucune translation**, leur unique
+rôle est d'appliquer la rotation. Sans elle, ils ne servent plus à rien.
+
+### Structure cible — une seule transformation monde
+
+L'ancrage étant à `(0,0,0)`, **l'origine locale est le pivot naturel** — et
+un `Transform Geometry` pivote justement autour de l'origine locale. Le
+bloc décentre → scale → repositionne (`Frame.007`) n'a alors plus de raison
+d'être : cette gymnastique n'existe que parce que le pivot était supposé
+être le centre de la bbox.
+
+```
+Join Geometry → Group.005 → Realize Instances.002
+  → UN SEUL Transform Geometry :
+       Translation = position de l'ancrage  (Sample Index.002)
+       Rotation    = switch Suivi Caméra    (Reroute.012)
+       Scale       = Scale global
+  → Group Output
+```
+
+Un `Transform Geometry` applique Scale, puis Rotation, puis Translation,
+toutes autour de l'origine locale. L'ancrage à `(0,0,0)` y reste après
+scale et rotation (un point à l'origine est invariant), puis atterrit
+exactement sur le marqueur après la translation. **La contrainte est
+satisfaite par construction, plus par compensation.**
+
+Ordre d'application, avec un test à chaque étape :
+
+- [ ] 1. Retirer la rotation de `Instance on Points.002`/`.003`.
+      *Test* : le suivi caméra ne fait plus rien (normal), mais plus rien
+      ne se désolidarise.
+- [ ] 2. Appliquer la rotation sur la transformation monde.
+      *Test* : tout le widget pivote d'un bloc, ancrage fixe.
+- [ ] 3. Remplacer `Transform Geometry.002`/`.005`/`.003` par un seul
+      `Transform Geometry`. *Test* : le Scale global.
+- [ ] 4. Le `Facteur X` du Bug A — indépendant des trois précédents.
+
+⚠️ **Compromis à valider** : aujourd'hui le Scale global pivote sur le
+centre de la bbox (la bulle grossit sur place, symétriquement). Après la
+refonte il pivotera sur l'ancrage (la bulle grossit en s'éloignant du
+marqueur, en restant accrochée). C'est le comportement cohérent avec la
+contrainte, mais c'est un changement visuel à valider — l'ancien
+comportement reste possible au prix de plus de complexité.
+
 ## Phase 5 — Organisation visuelle (lisibilité, pas de logique nouvelle)
 
 Maintenant qu'on sait précisément ce qui flotte (voir "Repères" en haut de
