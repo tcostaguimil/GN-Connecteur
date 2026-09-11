@@ -325,22 +325,51 @@ inversion de bug — même famille d'erreur que pour `MargesBox` et les
 pré-décalages qui s'annulent : voir la section « Pièges connus » du
 `CLAUDE.md`.)*
 
-### Centre — refonte prévue (décision utilisateur)
+### Centre — 🐛 tout disparaît (NaN) + refonte prévue
 
-Le montage actuel (même `Combine XYZ.002` sur les points 1 et 2, donc deux
-points confondus) est reconnu comme peu élégant et **sera remplacé**, pas
-rafistolé :
+**Symptôme** : en alignement Centre, **tout le connecteur disparaît**, pas
+seulement la ligne.
 
-- [ ] Construire une courbe à **2 points seulement** (du centre jusqu'à la
-      cartouche) pour le mode Centre.
-- [ ] Ajouter une **seconde courbe séparée** pour le surlignement.
+**Cause** : `Index Switch.002` envoie le même `Combine XYZ.002` sur les
+points 1 et 2 → deux points confondus → segment de longueur nulle. Comme
+`Fillet Curve.003` a `Limit Radius = False`, rien ne borne le rayon :
+arrondir un coin sur un segment nul n'a pas de solution → la courbe sort
+en **NaN**.
 
-Un spline à 2 points n'a pas de point intérieur, donc pas de fillet à
-prévoir sur cette branche — la question du coude ne se pose plus pour
-Centre.
+**Pourquoi tout disparaît et pas juste la ligne** — le NaN se propage :
 
-- [ ] Optionnel : exposer un socket `Rayon coin connecteur` pour piloter
-      le rayon des `Fillet Curve` de Gauche et Droite depuis l'UI.
+```
+Fillet Curve.003 (NaN) → Group.002 → jointure du widget
+  → Realize Instances.002 → Bounding Box.001   (bbox globale = NaN)
+  → « trouve centre pour revenir en arrière »  (centre = NaN)
+  → Frame.007 (decentre / Scale / repositionne)
+  → Translation du widget ENTIER = NaN → plus rien n'est affiché
+```
+
+Gauche et Droite sont épargnés parce que leurs trois points sont
+réellement distincts.
+
+**Fix — qui implémente en même temps la refonte prévue** :
+
+- [ ] Passer **`Points.004` de Count = 3 à Count = 2**. Seuls les index 0
+      et 1 sont alors évalués : point 0 = `Reroute.011` (ancrage), point 1
+      = `Combine XYZ.002` (côté cartouche). C'est exactement la courbe à
+      2 points voulue pour le mode Centre ; la 3e entrée de
+      `Index Switch.002` devient inutilisée, sans conséquence.
+      Un spline à 2 points n'ayant pas de point intérieur,
+      `Fillet Curve.003` devient un passe-plat inoffensif (supprimable).
+- [ ] Construire la **seconde courbe séparée pour le surlignement** en
+      mode Centre.
+
+### Robustesse — `Limit Radius` (indépendant du bug ci-dessus)
+
+- [ ] Activer `Limit Radius` sur `Fillet Curve.001`, `.002` et `.003` : il
+      est à `False` sur les trois, alors que celui de la cartouche
+      (`Fillet Curve`) est à `True`. Le rayon étant piloté par un socket
+      exposé (`Group Input` sortie 19), un rayon un peu grand sur un texte
+      court reproduira le même type de dégénérescence sur Gauche et
+      Droite. `Limit Radius` borne le rayon à ce que le segment peut
+      encaisser.
 
 - [ ] Optionnel : exposer un socket `Rayon coin connecteur` pour piloter
       le rayon des trois `Fillet Curve` depuis l'UI du modifier.
